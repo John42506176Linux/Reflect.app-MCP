@@ -1,1 +1,0 @@
-{"clientId":"Fqj7own74FgfsslO","redirectUris":["http://localhost:4208/oauth/callback"],"clientName":"MCP CLI Proxy","clientUri":"https://github.com/modelcontextprotocol/mcp-cli","grantTypes":["authorization_code","refresh_token"],"responseTypes":["code"],"registrationDate":1764447048,"tokenEndpointAuthMethod":"none"}
