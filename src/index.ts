@@ -117,6 +117,7 @@ export class ReflectMCP extends McpAgent<Env, Record<string, never>, Props> {
 							date: validDate,
 							text: content,
 							transform_type: "list-append",
+							list_name: "[[Claude-Notes]]",
 						}),
 					});
 					if (!response.ok) {
