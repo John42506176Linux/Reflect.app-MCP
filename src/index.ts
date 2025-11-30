@@ -84,13 +84,14 @@ export class ReflectMCP extends McpAgent<Env, Record<string, never>, Props> {
 		// Tool: Append to Reflect daily notes
 		this.server.tool(
 			"append_to_reflect_daily_notes",
-			"Append content to the daily notes in a specific Reflect graph. Adds text content to the daily notes page for the specified date. Pass today's date in the user's local timezone to avoid timezone issues.",
+			"Append content and/or tasks to the daily notes in a specific Reflect graph. Must add the tasks field if there are any actionable items to add. Pass today's date in the user's local timezone to avoid timezone issues.",
 			{
-				content: z.string().describe("The text content to append to the daily notes. Can be plain text or markdown formatted text."),
+				content: z.string().optional().describe("The text content to append to the daily notes. Can be plain text or markdown formatted text."),
+				tasks: z.array(z.string()).optional().describe("A list of tasks to add. Must add this field if there are any actionable items to add. Example: ['Buy groceries', 'Call mom']"),
 				graph_id: z.string().describe("The unique identifier of the Reflect graph where the daily notes should be updated."),
 				date: z.string().optional().describe("The date for the daily note in ISO 8601 format (YYYY-MM-DD). Use the user's local date. Example: '2025-11-30'. If omitted or invalid, defaults to today."),
 			},
-			async ({ content, graph_id, date }) => {
+			async ({ content, tasks, graph_id, date }) => {
 				const accessToken = this.props?.accessToken;
 				if (!accessToken) {
 					return {
@@ -106,6 +107,29 @@ export class ReflectMCP extends McpAgent<Env, Record<string, never>, Props> {
 				// Validate date format, fallback to today if invalid
 				const validDate = getValidDate(date);
 
+				// Build the text: combine content and tasks
+				const parts: string[] = [];
+				if (content) {
+					parts.push(content);
+				}
+				if (tasks && tasks.length > 0) {
+					// Format each task with "+ " prefix for Reflect task syntax
+					const formattedTasks = tasks.map(task => `+ ${task}`).join('\n');
+					parts.push(formattedTasks);
+				}
+				const textToAppend = parts.join('\n');
+
+				if (!textToAppend) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({ error: "Either content or tasks must be provided." }),
+							},
+						],
+					};
+				}
+
 				try {
 					const response = await fetch(`https://reflect.app/api/graphs/${graph_id}/daily-notes`, {
 						method: "PUT",
@@ -115,7 +139,7 @@ export class ReflectMCP extends McpAgent<Env, Record<string, never>, Props> {
 						},
 						body: JSON.stringify({
 							date: validDate,
-							text: content,
+							text: textToAppend,
 							transform_type: "list-append",
 							list_name: "[[Claude-Notes]]",
 						}),
