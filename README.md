@@ -2,12 +2,16 @@
 
 A remote [MCP server](https://modelcontextprotocol.io/introduction) for [Reflect](https://reflect.app) that enables AI assistants like Claude to interact with your Reflect notes through OAuth authentication.
 
+
 ## Available Tools
 
 - **`get_reflect_graphs`**: Get a list of all Reflect graphs accessible with your account
 - **`append_to_reflect_daily_notes`**: Append content to your daily notes in a specific Reflect graph
+  - `graph_id`: The graph identifier
+  - `content`: Text/markdown to append
+  - `date`: The date in ISO 8601 format (YYYY-MM-DD) — use the user's local date to avoid timezone issues
 
-## Setup
+## Local Setup
 
 ### 1. Create a Reflect OAuth App
 
