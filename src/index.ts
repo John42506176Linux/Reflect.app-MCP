@@ -1,156 +1,131 @@
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { WebClient } from "@slack/web-api";
 import { McpAgent } from "agents/mcp";
 import { z } from "zod";
-import { type Props, refreshSlackToken, SlackHandler } from "./slack-handler";
+import { type Props,  ReflectHandler } from "./reflect-handler";
 
-// To restrict access to specific users only, add their Slack userIDs to this Set.
-// Leave it empty to allow access to all authenticated users.
-// const ALLOWED_USERIDS = new Set([
-// 	// Example: 'U01234567',
-// ]);
 
-export class SlackMCP extends McpAgent<Env, unknown, Props> {
+export class ReflectMCP extends McpAgent<Env, Record<string, never>, Props> {
 	server = new McpServer({
-		name: "Slack Assistant MCP",
+		name: "Reflect Assistant MCP",
 		version: "1.0.0",
 	});
 
 	async init() {
-		// Who am I tool
-		this.server.tool("whoami", "Get information about your Slack user", {}, async () => ({
-			content: [
-				{
-					text: JSON.stringify({
-						scope: this.props!.scope,
-						teamName: this.props!.teamName,
-						userId: this.props!.userId,
-						userName: this.props!.userName,
-					}),
-					type: "text",
-				},
-			],
-		}));
-
-		// List channels tool
+		// Tool: Get all Reflect graphs
 		this.server.tool(
-			"listChannels",
-			"Get a list of channels from your Slack workspace",
+			"get_reflect_graphs",
+			"Get a list of all Reflect graphs accessible with the current access token. Retrieves all graphs from the Reflect API that the authenticated user has access to.",
 			{},
 			async () => {
-				const slack = new WebClient(this.props!.accessToken);
-				const response = await slack.conversations.list({
-					exclude_archived: true,
-					types: "public_channel",
-				});
-
-				return {
-					content: [
-						{
-							text: JSON.stringify(response.channels, null, 2),
-							type: "text",
-						},
-					],
-				};
-			},
-		);
-
-		// Get channel messages tool
-		this.server.tool(
-			"getChannelMessages",
-			"Get recent messages from a specific channel",
-			{
-				channelId: z.string().describe("The Slack channel ID"),
-				limit: z
-					.number()
-					.min(1)
-					.max(100)
-					.default(10)
-					.describe("Number of messages to retrieve"),
-			},
-			async ({ channelId, limit }) => {
-				const slack = new WebClient(this.props!.accessToken);
-				const response = await slack.conversations.history({
-					channel: channelId,
-					limit,
-				});
-
-				return {
-					content: [
-						{
-							text: JSON.stringify(response.messages, null, 2),
-							type: "text",
-						},
-					],
-				};
-			},
-		);
-
-		// This tool will fail because we only requested read permissions
-		this.server.tool(
-			"postMessage",
-			"Attempt to post a message to a channel (will fail due to read-only permissions)",
-			{
-				channelId: z.string().describe("The Slack channel ID"),
-				message: z.string().describe("The message to post"),
-			},
-			async ({ channelId, message }) => {
-				const slack = new WebClient(this.props!.accessToken);
-
-				try {
-					const response = await slack.chat.postMessage({
-						channel: channelId,
-						text: message,
-					});
-
-					if (!response.ok) {
-						throw new Error(response.error);
-					}
-
+				const accessToken = this.props?.accessToken;
+				if (!accessToken) {
 					return {
 						content: [
 							{
-								text: "Message posted successfully! This should not happen with read-only permissions.",
 								type: "text",
-							},
-						],
-					};
-				} catch (error) {
-					return {
-						content: [
-							{
-								text: `Failed to post message as expected with read-only permissions: ${(error as Error).message || JSON.stringify(error)}\n\nThis demonstrates that the MCP has properly limited access to read-only operations.`,
-								type: "text",
+								text: JSON.stringify({ error: "Not authenticated. Please complete OAuth flow first." }),
 							},
 						],
 					};
 				}
+
+				try {
+					const response = await fetch("https://reflect.app/api/graphs", {
+						headers: {
+							Authorization: `Bearer ${accessToken}`,
+						},
+					});
+					if (!response.ok) {
+						throw new Error(`HTTP error! status: ${response.status}`);
+					}
+					const data = await response.json();
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify(data),
+							},
+						],
+					};
+				} catch (e) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({ error: String(e) }),
+							},
+						],
+					};
+				}
+			}
+		);
+
+		// Tool: Append to Reflect daily notes
+		this.server.tool(
+			"append_to_reflect_daily_notes",
+			"Append content to the daily notes in a specific Reflect graph. Adds text content to today's daily notes page in the specified Reflect graph.",
+			{
+				content: z.string().describe("The text content to append to the daily notes. Can be plain text or markdown formatted text."),
+				graph_id: z.string().describe("The unique identifier of the Reflect graph where the daily notes should be updated."),
 			},
+			async ({ content, graph_id }) => {
+				const accessToken = this.props?.accessToken;
+				if (!accessToken) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({ error: "Not authenticated. Please complete OAuth flow first." }),
+							},
+						],
+					};
+				}
+
+				try {
+					const response = await fetch(`https://reflect.app/api/graphs/${graph_id}/daily-notes`, {
+						method: "PUT",
+						headers: {
+							Authorization: `Bearer ${accessToken}`,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							text: content,
+							transform_type: "list-append",
+						}),
+					});
+					if (!response.ok) {
+						throw new Error(`HTTP error! status: ${response.status}`);
+					}
+					const data = await response.json();
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify(data),
+							},
+						],
+					};
+				} catch (e) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({ error: String(e) }),
+							},
+						],
+					};
+				}
+			}
 		);
 	}
 }
 
 export default new OAuthProvider({
-	apiHandler: SlackMCP.mount("/sse") as any,
-	apiRoute: "/sse",
+	apiHandler: ReflectMCP.serve("/mcp") as any,
+	apiRoute: "/mcp",
 	authorizeEndpoint: "/authorize",
 	clientRegistrationEndpoint: "/register",
-	defaultHandler: SlackHandler as any,
+	defaultHandler: ReflectHandler as any,
 	tokenEndpoint: "/token",
-	tokenExchangeCallback: async (options) => {
-		if (options.grantType === "refresh_token") {
-			// Some Slack OAuth tokens don't expire, in which case we won't get a refreshToken,
-			// and there's nothing to do here.
-			if (!options.props.refreshToken) return;
-
-			// Keep most of the existing props, but override whatever needs changing
-			return {
-				newProps: {
-					...options.props,
-					...(await refreshSlackToken(options.props.refreshToken)),
-				},
-			};
-		}
-	},
 });

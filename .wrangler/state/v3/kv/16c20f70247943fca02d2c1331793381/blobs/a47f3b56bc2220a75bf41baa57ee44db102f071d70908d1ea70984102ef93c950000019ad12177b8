@@ -1,0 +1,1 @@
+{"clientId":"6w76Cryj31CsBUWp","redirectUris":["http://localhost:6274/oauth/callback","http://localhost:6274/oauth/callback/debug"],"clientName":"MCP Inspector","clientUri":"https://github.com/modelcontextprotocol/inspector","grantTypes":["authorization_code","refresh_token"],"responseTypes":["code"],"registrationDate":1764445222,"tokenEndpointAuthMethod":"none"}
